@@ -60,6 +60,12 @@ public sealed class NamespaceConnection
     /// <summary><see cref="ServiceBus.EntityRef.Key"/>s of the queues, topics and subscriptions pinned under Favourites.</summary>
     public List<string> Favorites { get; set; } = new();
 
+    /// <summary>
+    /// Mirrors the owning group's <see cref="NamespaceGroup.IsReadOnly"/> (kept in step by <see cref="Services.ConnectionStore"/>),
+    /// so <see cref="ServiceBus.ServiceBusOperations"/> can refuse writes even if the UI lets one through.
+    /// </summary>
+    [JsonIgnore] public bool IsReadOnly { get; set; }
+
     [JsonIgnore] public string ClientSecret { get; set; } = "";
     [JsonIgnore] public string ConnectionString { get; set; } = "";
 
@@ -137,6 +143,7 @@ public sealed class NamespaceConnection
         ConnectionString = ConnectionString,
         UseWebSockets = UseWebSockets,
         Favorites = new List<string>(Favorites),
+        IsReadOnly = IsReadOnly,
     };
 
     public static string AuthLabel(AuthMode mode) => mode switch

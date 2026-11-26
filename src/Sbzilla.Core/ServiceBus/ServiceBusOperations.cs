@@ -12,6 +12,12 @@ public static class ServiceBusOperations
     private static readonly TimeSpan ReceiveWait = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan AcceptSessionWait = TimeSpan.FromSeconds(4);
 
+    /// <summary>Second line of defence behind the UI: nothing that changes Service Bus runs for a read-only group's namespace.</summary>
+    private static void EnsureWritable(NamespaceConnection c)
+    {
+        if (c.IsReadOnly) throw new ReadOnlyNamespaceException(c.DisplayName);
+    }
+
     // ------------------------------------------------------------------ browsing
 
     /// <summary>Every queue, topic and subscription with their message counts.</summary>
@@ -174,6 +180,7 @@ public static class ServiceBusOperations
 
     public static async Task UpdatePropertiesAsync(NamespaceConnection c, object properties, CancellationToken ct)
     {
+        EnsureWritable(c);
         var admin = ServiceBusClients.Admin(c);
         switch (properties)
         {
@@ -187,6 +194,7 @@ public static class ServiceBusOperations
     /// <summary>Creates from CreateQueueOptions, CreateTopicOptions or CreateSubscriptionOptions (optionally with a first rule).</summary>
     public static async Task<EntityRef> CreateAsync(NamespaceConnection c, object options, CreateRuleOptions? rule, CancellationToken ct)
     {
+            EnsureWritable(c);
         var admin = ServiceBusClients.Admin(c);
         switch (options)
         {
@@ -207,6 +215,7 @@ public static class ServiceBusOperations
 
     public static async Task DeleteEntityAsync(NamespaceConnection c, EntityRef entity, CancellationToken ct)
     {
+        EnsureWritable(c);
         var admin = ServiceBusClients.Admin(c);
         switch (entity.Kind)
         {
@@ -219,11 +228,17 @@ public static class ServiceBusOperations
     public static async Task<List<RuleProperties>> GetRulesAsync(NamespaceConnection c, EntityRef subscription, CancellationToken ct) =>
         await ToListAsync(ServiceBusClients.Admin(c).GetRulesAsync(subscription.Topic, subscription.Name, ct), ct);
 
-    public static async Task CreateRuleAsync(NamespaceConnection c, EntityRef subscription, CreateRuleOptions rule, CancellationToken ct) =>
+    public static async Task CreateRuleAsync(NamespaceConnection c, EntityRef subscription, CreateRuleOptions rule, CancellationToken ct)
+    {
+        EnsureWritable(c);
         await ServiceBusClients.Admin(c).CreateRuleAsync(subscription.Topic, subscription.Name, rule, ct);
+    }
 
-    public static async Task DeleteRuleAsync(NamespaceConnection c, EntityRef subscription, string ruleName, CancellationToken ct) =>
+    public static async Task DeleteRuleAsync(NamespaceConnection c, EntityRef subscription, string ruleName, CancellationToken ct)
+    {
+        EnsureWritable(c);
         await ServiceBusClients.Admin(c).DeleteRuleAsync(subscription.Topic, subscription.Name, ruleName, ct);
+    }
 
     // ------------------------------------------------------------------ messages
 
@@ -329,6 +344,7 @@ public static class ServiceBusOperations
     public static async Task<int> PurgeAsync(NamespaceConnection c, EntityRef entity, MessageSource source, bool requiresSession,
         IProgress<int>? progress, CancellationToken ct)
     {
+        EnsureWritable(c);
         var client = ServiceBusClients.Client(c);
         var total = 0;
         if (!UsesSessions(requiresSession, source))
@@ -367,6 +383,7 @@ public static class ServiceBusOperations
     public static async Task<int> DeleteAsync(NamespaceConnection c, EntityRef entity, MessageSource source, bool requiresSession,
         IReadOnlyCollection<MessageKey> targets, IProgress<int>? progress, CancellationToken ct)
     {
+        EnsureWritable(c);
         var client = ServiceBusClients.Client(c);
         if (!UsesSessions(requiresSession, source))
         {
@@ -425,6 +442,7 @@ public static class ServiceBusOperations
     public static async Task<int> ResubmitAsync(NamespaceConnection c, EntityRef entity, MessageSource source, bool requiresSession,
         IReadOnlyList<ServiceBusReceivedMessage> messages, bool removeOriginals, IProgress<int>? progress, CancellationToken ct)
     {
+                EnsureWritable(c);
         await using var sender = ServiceBusClients.Client(c).CreateSender(entity.SendTarget);
         var sent = 0;
         foreach (var chunk in messages.Chunk(100))
@@ -442,6 +460,7 @@ public static class ServiceBusOperations
     public static async Task<int> SendAsync(NamespaceConnection c, string queueOrTopic, MessageDraft draft, int copies,
         IProgress<int>? progress, CancellationToken ct)
     {
+        EnsureWritable(c);
         await using var sender = ServiceBusClients.Client(c).CreateSender(queueOrTopic);
         var sent = 0;
         for (var start = 1; start <= copies; start += 100)

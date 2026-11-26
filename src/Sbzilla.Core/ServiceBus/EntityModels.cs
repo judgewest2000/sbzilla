@@ -79,3 +79,7 @@ public sealed class NamespaceSnapshot
 
     public EntityInfo? Find(EntityRef entity) => All.FirstOrDefault(e => e.Ref.Key == entity.Key);
 }
+
+/// <summary>Thrown when something tries to change Service Bus through a namespace in a read-only group.</summary>
+public sealed class ReadOnlyNamespaceException(string namespaceName)
+    : InvalidOperationException($"“{namespaceName}” is in a read-only group, so Sbzilla won't change anything in it.");

@@ -30,6 +30,13 @@ public sealed class ConnectionStore
     /// <summary>Loads the groups; on first run creates Production / Develop / Read-only groups.</summary>
     public List<NamespaceGroup> Load()
     {
+        var groups = LoadFile();
+        ApplyReadOnly(groups);
+        return groups;
+    }
+
+    private List<NamespaceGroup> LoadFile()
+    {
         if (!File.Exists(FilePath)) return DefaultGroups();
         try
         {
@@ -43,12 +50,21 @@ public sealed class ConnectionStore
         }
     }
 
+    /// <summary>Saves the groups, first copying each group's read-only flag onto its namespaces (every edit is followed by a save).</summary>
     public void Save(IEnumerable<NamespaceGroup> groups)
     {
+        var list = groups.ToList();
+        ApplyReadOnly(list);
         Directory.CreateDirectory(RootDirectory);
         var temp = FilePath + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(groups, JsonOptions));
+        File.WriteAllText(temp, JsonSerializer.Serialize(list, JsonOptions));
         File.Move(temp, FilePath, overwrite: true);
+    }
+
+    public static void ApplyReadOnly(IEnumerable<NamespaceGroup> groups)
+    {
+        foreach (var group in groups)
+            foreach (var ns in group.Namespaces) ns.IsReadOnly = group.IsReadOnly;
     }
 
     public static List<NamespaceGroup> DefaultGroups() =>

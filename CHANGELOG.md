@@ -1,5 +1,11 @@
 # Release notes
 
+## 1.1.0 (2026-11-26)
+
+- **Favourites**: right-click a queue, topic or subscription and choose **Add to favourites** to pin it in a **Favourites** folder at the top of its namespace.
+- **Read-only groups** are now also enforced in Sbzilla's core: sending, resubmitting, deleting, purging and editing are refused for those namespaces even if a button were left enabled.
+- The message list's columns now start at the left edge instead of being centred in wide windows.
+
 ## 1.0.1 (2026-11-26)
 
 - **Message bodies** are syntax-highlighted for JSON and XML. Press **Ctrl+F** in the body to find text: every match is highlighted, and Enter / F3 step through them.
