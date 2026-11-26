@@ -484,24 +484,21 @@ public sealed partial class EntityTab : UserControl
     {
         if (SelectedRows.FirstOrDefault() is not { } row) return;
         await Dialogs.WhenNoDialogOpenAsync(XamlRoot);
-        var box = new TextBox
-        {
-            Text = MessageFormatter.ToJson(new[] { row.Message }),
-            Style = (Style)Application.Current.Resources["CodeTextBoxStyle"],
-            IsReadOnly = true,
-            Width = 760,
-            Height = 520,
-        };
+        var json = MessageFormatter.ToJson(new[] { row.Message });
+        var viewer = new CodeEditor { IsReadOnly = true, Width = 760, Height = 520 };
+        viewer.SetContent(json, "json");
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = $"Message {row.Seq}",
-            Content = box,
+            Title = $"Message {row.Seq} as JSON (body and properties)",
+            Content = viewer,
             PrimaryButtonText = "Copy",
             CloseButtonText = "Close",
             Resources = { ["ContentDialogMaxWidth"] = 900.0 },
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary) CopyText(box.Text);
+        var result = await dialog.ShowAsync();
+        viewer.Close();
+        if (result == ContentDialogResult.Primary) CopyText(json);
     }
 
     private static void CopyText(string text)

@@ -1,5 +1,9 @@
 # Release notes
 
+## 1.1.1 (2026-11-26)
+
+- Double-clicking a message shows the whole message as JSON (body and properties) in a syntax-highlighted viewer. Previously only the first line appeared.
+
 ## 1.1.0 (2026-11-26)
 
 - **Favourites**: right-click a queue, topic or subscription and choose **Add to favourites** to pin it in a **Favourites** folder at the top of its namespace.
