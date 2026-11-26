@@ -180,6 +180,7 @@ public sealed partial class EntityTab : UserControl
     {
         _closed.Cancel();
         _operation?.Cancel();
+        BodyText.Close();
     }
 
     // ------------------------------------------------------------------ status
@@ -402,14 +403,14 @@ public sealed partial class EntityTab : UserControl
         var row = MessageList.SelectedItem as MessageRow ?? SelectedRows.FirstOrDefault();
         if (row == null)
         {
-            BodyText.Text = "";
+            BodyText.SetContent("", "plaintext");
             BodyInfo.Text = MessageList.SelectedItems.Count == 0 ? "Select a message" : "";
             PropertyList.ItemsSource = null;
             return;
         }
         var m = row.Message;
         var (text, kind) = MessageFormatter.BodyText(m.Body, m.ContentType);
-        BodyText.Text = text;
+        BodyText.SetContent(text, kind switch { BodyKind.Json => "json", BodyKind.Xml => "xml", _ => "plaintext" });
         BodyInfo.Text = $"{kind} · {MessageFormatter.Size(m.Body.ToMemory().Length)}" +
                         (MessageList.SelectedItems.Count > 1 ? $" · {MessageList.SelectedItems.Count} selected" : "");
         var rows = MessageFormatter.SystemProperties(m).Select(p => new PropertyRow(p.Key, p.Value)).ToList();

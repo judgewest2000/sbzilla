@@ -257,7 +257,7 @@
                         <TextBlock Text="Body" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
                         <TextBlock x:Name="BodyInfo" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <TextBox x:Name="BodyText" Grid.Row="1" Style="{StaticResource CodeTextBoxStyle}" IsReadOnly="True" />
+                    <views:CodeEditor x:Name="BodyText" Grid.Row="1" IsReadOnly="True" Placeholder="Select a message to see its body." />
                 </Grid>
                 <views:PaneSplitter Grid.Column="1" Target="2" ToolTipService.ToolTip="Drag to resize · double-click to reset" />
                 <Grid Grid.Column="2" RowSpacing="4">

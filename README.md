@@ -45,7 +45,7 @@ Use Windows Settings > Apps, or run the one-liner above with `-Uninstall`.
   - Peek a page at a time, with **Next** to continue.
   - Session-enabled entities can be peeked across all sessions or one session.
   - **Filter** the peeked messages by any text in the body or properties.
-  - The detail pane shows the body and all system and application properties. JSON and XML bodies are pretty-printed; binary bodies are shown as a hex dump.
+  - The detail pane shows the body and all system and application properties. JSON and XML bodies are pretty-printed and syntax-highlighted; binary bodies are shown as a hex dump. Ctrl+F in the body opens a find bar.
 - **Send messages** (Ctrl+N):
   - Body (type it or load it from a file), content type, message id, subject, correlation id, session id, partition key, To and Reply-to.
   - Time to live, a scheduled enqueue time (e.g. `+10m` or a date), and application properties written as `name = value` lines.
