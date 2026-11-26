@@ -4,6 +4,9 @@
 
 - **Favourites**: right-click a queue, topic or subscription and choose **Add to favourites** to pin it in a **Favourites** folder at the top of its namespace.
 - **Read-only groups** are now also enforced in Sbzilla's core: sending, resubmitting, deleting, purging and editing are refused for those namespaces even if a button were left enabled.
+- **Refresh one item**: right-click a queue, topic or subscription and choose **Refresh** to update just its counts (a topic also reloads its subscriptions).
+- **Send** and **Edit & resend** now show the whole message body in a syntax-highlighted editor. Previously only the first line of a formatted JSON body appeared.
+- Scroll bars sit beside the message list, property, subscription and rule lists and the body editor instead of over their contents, as in sqlZilla.
 - The message list's columns now start at the left edge instead of being centred in wide windows.
 
 ## 1.0.1 (2026-11-26)

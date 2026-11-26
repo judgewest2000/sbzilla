@@ -88,6 +88,10 @@ public sealed partial class EntityTab : UserControl
     public EntityTab(NamespaceGroup group, NamespaceConnection ns, EntityRef entity, MessageSource source = MessageSource.Active, EntityInfo? info = null)
     {
         InitializeComponent();
+        ExternalScrollBars.Attach(MessageList, MessageVBar, MessageHBar, MessageHeaderScroll);
+        ExternalScrollBars.Attach(PropertyList, PropertyVBar);
+        ExternalScrollBars.Attach(SubscriptionList, SubscriptionVBar);
+        ExternalScrollBars.Attach(RuleList, RuleVBar);
         Info = info;
         Group = group;
         Namespace = ns;

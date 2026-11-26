@@ -405,6 +405,7 @@ public sealed partial class MainWindow : Window
             case ExplorerEntryKind.Subscription:
                 Add("Open", "\uE8A7", () => OpenEntity(entry));
                 Add("Open dead-letter queue", "\uE7BA", () => OpenEntity(entry, MessageSource.DeadLetter));
+                Add("Refresh", "\uE72C", () => _ = RefreshEntityAsync(entry));
                 Add("Send message…" + suffix, "\uE724", () => _ = OpenEntity(entry)?.SendAsync(), !readOnly);
                 menu.Items.Add(OpenTabsSubMenu(entry));
                 AddFavoriteItem();
@@ -413,6 +414,7 @@ public sealed partial class MainWindow : Window
                 break;
             case ExplorerEntryKind.Topic:
                 Add("Open", "\uE8A7", () => OpenEntity(entry));
+                Add("Refresh", "\uE72C", () => _ = RefreshEntityAsync(entry));
                 Add("Send message…" + suffix, "\uE724", () => _ = OpenEntity(entry)?.SendAsync(), !readOnly);
                 Add("New subscription…" + suffix, "\uE710", () => _ = CreateEntityAsync(g, ns!, EntityKind.Subscription, entry.Entity!.Name), !readOnly);
                 menu.Items.Add(OpenTabsSubMenu(entry));
@@ -465,17 +467,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Keeps the explorer's counts in step with what an open tab has just read.</summary>
     private void OnInfoUpdated(EntityTab tab, EntityInfo info)
     {
-        if (_snapshots.TryGetValue(tab.Namespace.Id, out var snapshot))
-        {
-            var list = info.Ref.Kind switch
-            {
-                EntityKind.Queue => snapshot.Queues,
-                EntityKind.Topic => snapshot.Topics,
-                _ => snapshot.Topics.FirstOrDefault(t => t.Ref.Name == info.Ref.Topic)?.Subscriptions,
-            };
-            var index = list?.FindIndex(x => x.Ref.Key == info.Ref.Key) ?? -1;
-            if (index >= 0) list![index] = info;
-        }
+        StoreInfo(tab.Namespace.Id, info);
         var updates = new[] { info }.Concat(info.Subscriptions);
         var labelsByKey = updates.DistinctBy(i => i.Ref.Key).ToDictionary(i => i.Ref.Key, i => i.CountsLabel);
         // The same entity can be listed twice: under Queues / Topics and under Favourites.
@@ -483,6 +475,36 @@ public sealed partial class MainWindow : Window
             .Where(e => e.Namespace?.Id == tab.Namespace.Id && e.Entity is { } entity && labelsByKey.ContainsKey(entity.Key))
             .ToList();
         foreach (var entry in entries) entry.Detail = labelsByKey[entry.Entity!.Key];
+    }
+
+    /// <summary>Replaces an entity's entry in its namespace's cached snapshot (a topic brings its subscriptions with it).</summary>
+    private void StoreInfo(string namespaceId, EntityInfo info)
+    {
+        if (!_snapshots.TryGetValue(namespaceId, out var snapshot)) return;
+        var list = info.Ref.Kind switch
+        {
+            EntityKind.Queue => snapshot.Queues,
+            EntityKind.Topic => snapshot.Topics,
+            _ => snapshot.Topics.FirstOrDefault(t => t.Ref.Name == info.Ref.Topic)?.Subscriptions,
+        };
+        var index = list?.FindIndex(x => x.Ref.Key == info.Ref.Key) ?? -1;
+        if (index >= 0) list![index] = info;
+    }
+
+    /// <summary>Re-reads one queue, topic (with its subscriptions) or subscription instead of the whole namespace.</summary>
+    private async Task RefreshEntityAsync(ExplorerEntry entry)
+    {
+        if (entry is not { Namespace: { } ns, Entity: { } entity }) return;
+        EntityInfo info;
+        try { info = await Task.Run(() => ServiceBusOperations.GetInfoAsync(ns, entity, CancellationToken.None)); }
+        catch (Exception ex)
+        {
+            await Dialogs.ShowErrorAsync(XamlRoot, $"Couldn't refresh {entity.DisplayName}", ex.Message);
+            return;
+        }
+        StoreInfo(ns.Id, info);
+        // A full rebuild also picks up subscriptions added to or removed from a topic, and refreshes tooltips.
+        RebuildTree();
     }
 
     /// <summary>Pins or unpins an entity under its namespace's Favourites. Allowed in read-only groups: it only changes Sbzilla's settings.</summary>

@@ -51,7 +51,8 @@ Use Windows Settings > Apps, or run the one-liner above with `-Uninstall`.
   - Body (type it or load it from a file), content type, message id, subject, correlation id, session id, partition key, To and Reply-to.
   - Time to live, a scheduled enqueue time (e.g. `+10m` or a date), and application properties written as `name = value` lines.
   - Send several copies at once. `{n}` is replaced with the copy number and `{guid}` with a new GUID.
-- **Edit & resend**: opens the Send dialog pre-filled from the selected message.
+- **Edit & resend**: opens the Send dialog pre-filled from the selected message. The body is edited in a syntax-highlighted editor.
+- **Refresh one item**: right-click a queue, topic or subscription and choose **Refresh** to update just its counts.
 - **Resubmit** dead-lettered messages to their queue or topic, optionally removing the originals. Messages resubmitted from a subscription go to its topic, so every subscription on that topic receives them, and Sbzilla warns you about this.
 - **Delete** selected messages and **purge** a queue, a subscription or their dead-letter queues. Purging and deleting entities require you to type the name to confirm.
 - **Manage entities**:

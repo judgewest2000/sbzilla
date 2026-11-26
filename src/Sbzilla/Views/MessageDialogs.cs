@@ -59,14 +59,16 @@ public static class MessageDialogs
     public static async Task<(MessageDraft Draft, int Copies)?> SendAsync(XamlRoot root, string target, MessageDraft initial, bool requiresSession)
     {
         await Dialogs.WhenNoDialogOpenAsync(root);
-        var body = new TextBox
+        // The highlighted editor (as in the body viewer): it shows every line of the body whatever its line endings.
+        var body = new CodeEditor
         {
-            Header = "Body",
-            Text = initial.Body,
-            Style = (Style)Application.Current.Resources["CodeTextBoxStyle"],
-            Height = 220,
-            PlaceholderText = "{ \"hello\": \"world\" }   ·   {n} is replaced with the copy number and {guid} with a new GUID",
+            Height = 260,
+            Placeholder = "{ \"hello\": \"world\" }   ·   {n} is replaced with the copy number and {guid} with a new GUID",
         };
+        body.SetContent(initial.Body, EditorLanguage(initial.Body, initial.ContentType));
+        // Enter is a new line here, never the dialog's Send button.
+        body.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) e.Handled = true; };
+        var bodyHeader = new TextBlock { Text = "Body" };
         var loadButton = new HyperlinkButton { Content = "Load body from file…", Padding = new Thickness(0) };
         var formatButton = new HyperlinkButton { Content = "Format JSON / XML", Padding = new Thickness(0) };
         var bodyLinks = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
@@ -110,26 +112,28 @@ public static class MessageDialogs
             if (file == null) return;
             try
             {
-                body.Text = await File.ReadAllTextAsync(file.Path);
+                body.SetContent(await File.ReadAllTextAsync(file.Path), "plaintext");
                 var ext = Path.GetExtension(file.Path).ToLowerInvariant();
                 contentType.Text = ext switch { ".json" => "application/json", ".xml" => "application/xml", ".txt" => "text/plain", _ => contentType.Text };
+                body.CodeLanguage = EditorLanguage(body.Text, contentType.Text ?? "");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ShowError(error, ex.Message); }
         };
         formatButton.Click += (_, _) =>
         {
             var (text, _) = MessageFormatter.BodyText(BinaryData.FromString(body.Text), contentType.Text);
-            body.Text = text;
+            body.SetContent(text, EditorLanguage(text, contentType.Text ?? ""));
         };
 
         var panel = new StackPanel { Spacing = 10, Width = 760 };
         panel.Children.Add(new TextBlock { Text = $"To {target}", Foreground = Secondary });
+        panel.Children.Add(bodyHeader);
         panel.Children.Add(body);
         panel.Children.Add(bodyLinks);
         panel.Children.Add(TwoColumns(contentType, messageId, subject, correlationId, sessionId, partitionKey, to, replyTo, replyToSession, ttl, scheduled, copies));
         panel.Children.Add(properties);
         panel.Children.Add(error);
-        body.Loaded += (_, _) => body.Focus(FocusState.Programmatic);
+        body.Loaded += (_, _) => body.FocusEditor();
 
         MessageDraft? draft = null;
         var dialog = Create(root, "Send message", panel, "Send");
@@ -163,9 +167,19 @@ public static class MessageDialogs
                 ShowError(error, ex.Message);
             }
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary || draft == null) return null;
+        var result = await dialog.ShowAsync();
+        body.Close();
+        if (result != ContentDialogResult.Primary || draft == null) return null;
         return (draft, double.IsNaN(copies.Value) ? 1 : (int)copies.Value);
     }
+
+    private static string EditorLanguage(string text, string contentType) =>
+        MessageFormatter.BodyText(BinaryData.FromString(text), contentType).Kind switch
+        {
+            BodyKind.Json => "json",
+            BodyKind.Xml => "xml",
+            _ => "plaintext",
+        };
 
     /// <summary>Empty → send now; "+10m" → relative; otherwise a local date/time.</summary>
     private static DateTimeOffset? ParseSchedule(string text)
