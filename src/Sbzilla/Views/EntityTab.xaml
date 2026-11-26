@@ -197,7 +197,7 @@
                     Background="{ThemeResource LayerFillColorDefaultBrush}">
                 <Grid>
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto" VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled">
-                        <Grid Width="1500">
+                        <Grid MinWidth="1500">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
@@ -231,6 +231,7 @@
                                     <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                                         <Setter Property="MinHeight" Value="30" />
                                         <Setter Property="Padding" Value="16,0,0,0" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                     </Style>
                                 </ListView.ItemContainerStyle>
                             </ListView>
