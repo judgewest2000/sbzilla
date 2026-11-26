@@ -1,5 +1,10 @@
 # Release notes
 
+## 1.1.2 (2026-11-26)
+
+- **Search** now lists matching queues, topics and subscriptions even when the namespace's own name also matches (e.g. "baltic" in aimcbalticrs). Namespaces whose name matches are loaded automatically, so this works straight after starting.
+- Search waits until you pause typing (400 ms) before filtering; Enter and Down apply it immediately.
+
 ## 1.1.1 (2026-11-26)
 
 - Double-clicking a message shows the whole message as JSON (body and properties) in a syntax-highlighted viewer. Previously only the first line appeared.

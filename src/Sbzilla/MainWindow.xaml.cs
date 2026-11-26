@@ -25,6 +25,8 @@ public sealed partial class MainWindow : Window
     private readonly HashSet<string> _collapsedFolders = new();
     private string _explorerFilter = "";
     private HashSet<string> _expandedBeforeSearch = new();
+    private readonly HashSet<string> _searchLoads = new();
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchDebounce;
 
     public ObservableCollection<ExplorerEntry> RootEntries { get; } = new();
     private TreeView NamespaceTree = null!;
@@ -99,7 +101,7 @@ public sealed partial class MainWindow : Window
         ReplaceNamespaceTree();
         EmptyHint.Text = _groups.Count == 0
             ? "No groups yet. Create a group (e.g. Production, Develop) and add namespaces to it."
-            : $"Nothing matches \u201C{_explorerFilter}\u201D. Search only covers namespaces that have been expanded.";
+            : $"Nothing matches \u201C{_explorerFilter}\u201D. Search looks inside namespaces that have been expanded, or whose name matches.";
         EmptyHint.Visibility = RootEntries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (selectedId != null && VisibleEntries(RootEntries).FirstOrDefault(e => e.Id == selectedId) is { } selected) SelectWhenShown(selected);
     }
@@ -185,14 +187,17 @@ public sealed partial class MainWindow : Window
             {
                 var nsMatches = !searching || groupMatches || Matches(ns.DisplayName) || Matches(ns.ResolvedNamespace);
                 var nsEntry = ExplorerEntry.ForNamespace(g, ns);
+                // Matching entities win, even when the namespace (or group) name matches too, so they're listed and opened.
+                var entityHits = 0;
                 if (_snapshots.TryGetValue(ns.Id, out var snapshot))
                 {
-                    var hits = FillNamespace(nsEntry, snapshot, nsMatches ? "" : filter, expanded);
-                    if (!nsMatches && hits == 0) continue;
+                    entityHits = searching ? FillNamespace(nsEntry, snapshot, filter, expanded) : 0;
+                    if (entityHits == 0) FillNamespace(nsEntry, snapshot, "", expanded);
+                    if (!nsMatches && entityHits == 0) continue;
                 }
                 else if (!nsMatches) continue;
-                // While searching, open namespaces that are only listed because of a matching entity.
-                nsEntry.IsExpanded = nsEntry.Loaded && (searching ? !nsMatches : expanded.Contains(ns.Id));
+                // While searching, open namespaces that are listed because of a matching entity.
+                nsEntry.IsExpanded = nsEntry.Loaded && (searching ? entityHits > 0 : expanded.Contains(ns.Id));
                 groupEntry.Children.Add(nsEntry);
             }
             if (searching && !groupMatches && groupEntry.Children.Count == 0) continue;
@@ -902,15 +907,64 @@ public sealed partial class MainWindow : Window
 
     private void ExplorerSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (_searchDebounce == null)
+        {
+            _searchDebounce = DispatcherQueue.CreateTimer();
+            _searchDebounce.Interval = TimeSpan.FromMilliseconds(400);
+            _searchDebounce.IsRepeating = false;
+            _searchDebounce.Tick += (_, _) => ApplyExplorerSearch();
+        }
+        _searchDebounce.Stop();
+        // Clearing the search restores the tree straight away; typing waits for a pause.
+        if (ExplorerSearch.Text.Trim().Length == 0) ApplyExplorerSearch();
+        else _searchDebounce.Start();
+    }
+
+    private void ApplyExplorerSearch()
+    {
+        _searchDebounce?.Stop();
         var filter = ExplorerSearch.Text.Trim();
         if (filter == _explorerFilter) return;
         if (_explorerFilter.Length == 0) _expandedBeforeSearch = ExpandedIds();
+        if (filter.Length == 0) _searchLoads.Clear();
         _explorerFilter = filter;
         RebuildTree(expanded: filter.Length == 0 ? _expandedBeforeSearch : null);
+        LoadMatchingNamespaces();
+    }
+
+    /// <summary>
+    /// Search can only look inside namespaces whose entities have been fetched, so fetch the ones whose name matches
+    /// (e.g. "baltic" finds aimcbalticrs) and list their matching queues and topics. Others aren't contacted.
+    /// </summary>
+    private void LoadMatchingNamespaces()
+    {
+        if (_explorerFilter.Length == 0) return;
+        var unloadedNamespaces = Flatten(RootEntries)
+            .Where(e => e.Kind == ExplorerEntryKind.Namespace)
+            .Where(e => !_snapshots.ContainsKey(e.Namespace!.Id))
+            .ToList();
+        foreach (var entry in unloadedNamespaces) _ = SearchLoadAsync(entry);
+    }
+
+    private async Task SearchLoadAsync(ExplorerEntry nsEntry)
+    {
+        var ns = nsEntry.Namespace!;
+        if (!_searchLoads.Add(ns.Id)) return;   // already being fetched (or failed) during this search
+        try
+        {
+            var snapshot = await Task.Run(() => ServiceBusOperations.LoadAsync(ns, CancellationToken.None));
+            _snapshots[ns.Id] = snapshot;
+            if (_explorerFilter.Length > 0) RebuildTree();
+        }
+        catch
+        {
+            // Expanding the namespace shows the error; search just leaves it as a name match.
+        }
     }
 
     private void ExplorerSearch_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (e.Key is VirtualKey.Enter or VirtualKey.Down) ApplyExplorerSearch();   // don't wait for the debounce
         switch (e.Key)
         {
             case VirtualKey.Escape when ExplorerSearch.Text.Length > 0:
