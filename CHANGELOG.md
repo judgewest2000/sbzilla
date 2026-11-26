@@ -1,5 +1,9 @@
 # Release notes
 
+## 1.0.1 (2026-11-26)
+
+- **Message bodies** are syntax-highlighted for JSON and XML. Press **Ctrl+F** in the body to find text: every match is highlighted, and Enter / F3 step through them.
+
 ## 1.0.0 (2026-11-26)
 
 - First release.
