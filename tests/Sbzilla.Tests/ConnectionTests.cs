@@ -51,7 +51,7 @@ public class ConnectionTests
         {
             var store = new ConnectionStore(dir);
             var group = new NamespaceGroup { Name = "Prod", Color = "#C42B1C", IsReadOnly = true };
-            group.Namespaces.Add(new NamespaceConnection { Name = "Main", ConnectionString = Key });
+            group.Namespaces.Add(new NamespaceConnection { Name = "Main", ConnectionString = Key, Favorites = ["queue:orders", "subscription:events/subscriptions/audit"] });
             group.Namespaces.Add(new NamespaceConnection { AuthMode = AuthMode.EntraServicePrincipal, Namespace = "contoso", ClientSecret = "s3cret" });
 
             store.Save([group]);
@@ -62,6 +62,8 @@ public class ConnectionTests
             Assert.DoesNotContain("s3cret", json);
             Assert.Equal(("Prod", true), (loaded.Name, loaded.IsReadOnly));
             Assert.Equal(Key, loaded.Namespaces[0].ConnectionString);
+            Assert.Equal(["queue:orders", "subscription:events/subscriptions/audit"], loaded.Namespaces[0].Favorites);
+            Assert.Empty(loaded.Namespaces[1].Favorites);
             Assert.Equal((AuthMode.EntraServicePrincipal, "s3cret"), (loaded.Namespaces[1].AuthMode, loaded.Namespaces[1].ClientSecret));
         }
         finally

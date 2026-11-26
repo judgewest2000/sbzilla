@@ -218,6 +218,28 @@ public sealed partial class MainWindow : Window
             .Where(x => Matches(x.Topic.Ref.Name) || x.Subs.Count > 0)
             .ToList();
 
+        // Favourites first, just under the namespace. Ones whose entity no longer exists are kept but not shown.
+        var entitiesByKey = snapshot.All.DistinctBy(e => e.Ref.Key).ToDictionary(e => e.Ref.Key);
+        var favorites = ns.Favorites
+            .Where(entitiesByKey.ContainsKey)
+            .Select(key => entitiesByKey[key])
+            .Where(f => Matches(f.Ref.DisplayName))
+            .OrderBy(f => f.Ref.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (favorites.Count > 0)
+        {
+            var folder = ExplorerEntry.Favorites(g, ns, favorites.Count);
+            foreach (var favorite in favorites)
+            {
+                var favoriteEntry = ExplorerEntry.ForEntity(g, ns, favorite, "favorites", fullName: true);
+                foreach (var s in favorite.Subscriptions) favoriteEntry.Children.Add(ExplorerEntry.ForEntity(g, ns, s, $"favorites/{favorite.Ref.Key}"));
+                favoriteEntry.IsExpanded = favorite.Subscriptions.Count > 0 && expanded.Contains(favoriteEntry.Id);
+                folder.Children.Add(favoriteEntry);
+            }
+            folder.IsExpanded = searching || !_collapsedFolders.Contains(folder.Id);
+            nsEntry.Children.Add(folder);
+        }
+
         if (!searching || queues.Count > 0)
         {
             var folder = ExplorerEntry.Folder(g, ns, topics: false, queues.Count);
@@ -288,7 +310,7 @@ public sealed partial class MainWindow : Window
     {
         if (args.Item is not ExplorerEntry entry) return;
         entry.IsExpanded = true;   // the template binds IsExpanded one way, so user expands are copied back here
-        if (entry.Kind is ExplorerEntryKind.QueuesFolder or ExplorerEntryKind.TopicsFolder) _collapsedFolders.Remove(entry.Id);
+        if (entry.IsFolder) _collapsedFolders.Remove(entry.Id);
         if (entry.Kind == ExplorerEntryKind.Namespace) _ = LoadNamespaceAsync(entry, false);
     }
 
@@ -296,13 +318,13 @@ public sealed partial class MainWindow : Window
     {
         if (args.Item is not ExplorerEntry entry) return;
         entry.IsExpanded = false;
-        if (entry.Kind is ExplorerEntryKind.QueuesFolder or ExplorerEntryKind.TopicsFolder && _explorerFilter.Length == 0) _collapsedFolders.Add(entry.Id);
+        if (entry.IsFolder && _explorerFilter.Length == 0) _collapsedFolders.Add(entry.Id);
     }
 
     private void NamespaceTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
         if (args.InvokedItem is not ExplorerEntry entry) return;
-        if (entry.Kind is ExplorerEntryKind.Group or ExplorerEntryKind.Namespace or ExplorerEntryKind.QueuesFolder or ExplorerEntryKind.TopicsFolder)
+        if (entry.Kind is ExplorerEntryKind.Group or ExplorerEntryKind.Namespace || entry.IsFolder)
         {
             entry.IsExpanded = !entry.IsExpanded;
             if (entry.IsExpanded && entry.Kind == ExplorerEntryKind.Namespace) _ = LoadNamespaceAsync(entry, false);
@@ -341,6 +363,11 @@ public sealed partial class MainWindow : Window
             menu.Items.Add(item);
         }
         void Separator() => menu.Items.Add(new MenuFlyoutSeparator());
+        void AddFavoriteItem()
+        {
+            if (entry.IsFavorite) Add("Remove from favourites", "\uE8D9", () => ToggleFavorite(entry));
+            else Add("Add to favourites", "\uE734", () => ToggleFavorite(entry));
+        }
 
         var g = entry.Group;
         var ns = entry.Namespace;
@@ -380,6 +407,7 @@ public sealed partial class MainWindow : Window
                 Add("Open dead-letter queue", "\uE7BA", () => OpenEntity(entry, MessageSource.DeadLetter));
                 Add("Send message…" + suffix, "\uE724", () => _ = OpenEntity(entry)?.SendAsync(), !readOnly);
                 menu.Items.Add(OpenTabsSubMenu(entry));
+                AddFavoriteItem();
                 Separator();
                 Add($"Delete {EntityRef.KindLabel(entry.Entity!.Kind).ToLowerInvariant()}…" + suffix, "\uE74D", () => _ = DeleteEntityAsync(entry), !readOnly);
                 break;
@@ -388,6 +416,7 @@ public sealed partial class MainWindow : Window
                 Add("Send message…" + suffix, "\uE724", () => _ = OpenEntity(entry)?.SendAsync(), !readOnly);
                 Add("New subscription…" + suffix, "\uE710", () => _ = CreateEntityAsync(g, ns!, EntityKind.Subscription, entry.Entity!.Name), !readOnly);
                 menu.Items.Add(OpenTabsSubMenu(entry));
+                AddFavoriteItem();
                 Separator();
                 Add("Delete topic…" + suffix, "\uE74D", () => _ = DeleteEntityAsync(entry), !readOnly);
                 break;
@@ -448,8 +477,21 @@ public sealed partial class MainWindow : Window
             if (index >= 0) list![index] = info;
         }
         var updates = new[] { info }.Concat(info.Subscriptions);
-        foreach (var i in updates)
-            if (FindEntry($"{tab.Namespace.Id}/{i.Ref.Key}") is { } entry) entry.Detail = i.CountsLabel;
+        var labelsByKey = updates.DistinctBy(i => i.Ref.Key).ToDictionary(i => i.Ref.Key, i => i.CountsLabel);
+        // The same entity can be listed twice: under Queues / Topics and under Favourites.
+        var entries = Flatten(RootEntries)
+            .Where(e => e.Namespace?.Id == tab.Namespace.Id && e.Entity is { } entity && labelsByKey.ContainsKey(entity.Key))
+            .ToList();
+        foreach (var entry in entries) entry.Detail = labelsByKey[entry.Entity!.Key];
+    }
+
+    /// <summary>Pins or unpins an entity under its namespace's Favourites. Allowed in read-only groups: it only changes Sbzilla's settings.</summary>
+    private void ToggleFavorite(ExplorerEntry entry)
+    {
+        if (entry is not { Namespace: { } ns, Entity: { } entity }) return;
+        if (!ns.Favorites.Remove(entity.Key)) ns.Favorites.Add(entity.Key);
+        Save();
+        RebuildTree();
     }
 
     // ------------------------------------------------------------------ groups & namespaces
@@ -616,6 +658,11 @@ public sealed partial class MainWindow : Window
                        || entity.Kind == EntityKind.Topic && t.Entity.Entity.Kind == EntityKind.Subscription && t.Entity.Entity.Topic == entity.Name))
             .Select(t => t.Tab).ToList();
         foreach (var tab in gone) CloseTab(tab);
+        // Deleting a topic deletes its subscriptions, so unpin those too.
+        var subscriptionPrefix = $"{EntityKind.Subscription}:{entity.Name}/Subscriptions/".ToLowerInvariant();
+        var unpinned = entry.Namespace.Favorites.RemoveAll(key =>
+            key == entity.Key || entity.Kind == EntityKind.Topic && key.StartsWith(subscriptionPrefix, StringComparison.Ordinal));
+        if (unpinned > 0) Save();
         await ReloadNamespaceAsync(entry.Namespace.Id);
     }
 

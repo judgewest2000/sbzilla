@@ -57,6 +57,9 @@ public sealed class NamespaceConnection
     /// <summary>AMQP over WebSockets (port 443) for networks that block AMQP's port 5671.</summary>
     public bool UseWebSockets { get; set; }
 
+    /// <summary><see cref="ServiceBus.EntityRef.Key"/>s of the queues, topics and subscriptions pinned under Favourites.</summary>
+    public List<string> Favorites { get; set; } = new();
+
     [JsonIgnore] public string ClientSecret { get; set; } = "";
     [JsonIgnore] public string ConnectionString { get; set; } = "";
 
@@ -133,6 +136,7 @@ public sealed class NamespaceConnection
         ClientSecret = ClientSecret,
         ConnectionString = ConnectionString,
         UseWebSockets = UseWebSockets,
+        Favorites = new List<string>(Favorites),
     };
 
     public static string AuthLabel(AuthMode mode) => mode switch

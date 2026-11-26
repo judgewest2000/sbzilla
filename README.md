@@ -32,6 +32,7 @@ Use Windows Settings > Apps, or run the one-liner above with `-Uninstall`.
 
 - **Namespace groups**: a tree of groups, each with a name and colour. Under each group are namespaces, and each namespace expands into **Queues** and **Topics** folders. Topics expand into their subscriptions. Every queue and subscription shows its active and dead-letter counts.
 - **Explorer search**: the box above the tree (Ctrl+Shift+F) filters groups, namespaces and loaded queues, topics and subscriptions. Press Enter to open the first match, or Esc to clear.
+- **Favourites**: right-click a queue, topic or subscription and choose **Add to favourites** to pin it in a **Favourites** folder at the top of its namespace. Favourites are saved per namespace and work in read-only groups too.
 - **Colour-coded windows**: entity tabs, the title bar and the status bar are tinted with the group's colour.
 - **Read-only groups**: you can browse and peek, but sending, resubmitting, deleting, purging and editing are all blocked.
 - **Authentication**:

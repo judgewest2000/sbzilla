@@ -6,11 +6,11 @@ using Sbzilla.ServiceBus;
 
 namespace Sbzilla.Views;
 
-public enum ExplorerEntryKind { Group, Namespace, QueuesFolder, TopicsFolder, Queue, Topic, Subscription, Placeholder }
+public enum ExplorerEntryKind { Group, Namespace, FavoritesFolder, QueuesFolder, TopicsFolder, Queue, Topic, Subscription, Placeholder }
 
 /// <summary>
 /// View-model for one row in the namespace explorer:
-/// group → namespace → Queues / Topics → queue, or topic → subscription.
+/// group → namespace → Favourites / Queues / Topics → queue, or topic → subscription.
 /// </summary>
 public sealed class ExplorerEntry : ObservableObject
 {
@@ -41,7 +41,14 @@ public sealed class ExplorerEntry : ObservableObject
             _detail = $"({count:N0})",
         };
 
-    public static ExplorerEntry ForEntity(NamespaceGroup g, NamespaceConnection ns, EntityInfo info)
+    public static ExplorerEntry Favorites(NamespaceGroup g, NamespaceConnection ns, int count) =>
+        new(ExplorerEntryKind.FavoritesFolder, g, ns, "Favourites") { _detail = $"({count:N0})" };
+
+    /// <param name="scope">
+    /// Set for copies listed under Favourites, so their ids differ from the same entity under Queues / Topics.
+    /// </param>
+    /// <param name="fullName">Label subscriptions "topic/subscription" (used under Favourites).</param>
+    public static ExplorerEntry ForEntity(NamespaceGroup g, NamespaceConnection ns, EntityInfo info, string? scope = null, bool fullName = false)
     {
         var kind = info.Ref.Kind switch
         {
@@ -49,7 +56,7 @@ public sealed class ExplorerEntry : ObservableObject
             EntityKind.Topic => ExplorerEntryKind.Topic,
             _ => ExplorerEntryKind.Subscription,
         };
-        return new ExplorerEntry(kind, g, ns, info.Ref.Name) { Info = info, _detail = info.Status == "unknown" ? "" : info.CountsLabel };
+        return new ExplorerEntry(kind, g, ns, fullName ? info.Ref.DisplayName : info.Ref.Name) { Info = info, Scope = scope, _detail = info.Status == "unknown" ? "" : info.CountsLabel };
     }
 
     public static ExplorerEntry Placeholder(NamespaceGroup g, NamespaceConnection? ns, string text) =>
@@ -60,6 +67,8 @@ public sealed class ExplorerEntry : ObservableObject
     public NamespaceConnection? Namespace { get; }
     public EntityInfo? Info { get; private init; }
     public EntityRef? Entity => Info?.Ref;
+    public string? Scope { get; private init; }
+    public bool IsFavorite => Entity is { } e && Namespace!.Favorites.Contains(e.Key);
     public ObservableCollection<ExplorerEntry> Children { get; } = new();
 
     /// <summary>True once a namespace's entities have been fetched (or are being fetched).</summary>
@@ -69,10 +78,11 @@ public sealed class ExplorerEntry : ObservableObject
     {
         ExplorerEntryKind.Group => Group.Id,
         ExplorerEntryKind.Namespace => Namespace!.Id,
+        ExplorerEntryKind.FavoritesFolder => $"{Namespace!.Id}/favorites",
         ExplorerEntryKind.QueuesFolder => $"{Namespace!.Id}/queues",
         ExplorerEntryKind.TopicsFolder => $"{Namespace!.Id}/topics",
         ExplorerEntryKind.Placeholder => $"{Namespace?.Id}/placeholder/{Label}",
-        _ => $"{Namespace!.Id}/{Entity!.Key}",
+        _ => Scope != null ? $"{Namespace!.Id}/{Scope}/{Entity!.Key}" : $"{Namespace!.Id}/{Entity!.Key}",
     };
 
     public string Label
@@ -97,10 +107,12 @@ public sealed class ExplorerEntry : ObservableObject
     }
 
     public bool IsEntity => Kind is ExplorerEntryKind.Queue or ExplorerEntryKind.Topic or ExplorerEntryKind.Subscription;
+    public bool IsFolder => Kind is ExplorerEntryKind.FavoritesFolder or ExplorerEntryKind.QueuesFolder or ExplorerEntryKind.TopicsFolder;
 
     public string Glyph => Kind switch
     {
         ExplorerEntryKind.Namespace => "\uE753",        // cloud
+        ExplorerEntryKind.FavoritesFolder => "\uE734",  // star
         ExplorerEntryKind.QueuesFolder or ExplorerEntryKind.TopicsFolder => "\uE8B7",
         ExplorerEntryKind.Queue => "\uE8C3",            // list
         ExplorerEntryKind.Topic => "\uE789",            // broadcast
