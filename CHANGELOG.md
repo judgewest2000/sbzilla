@@ -1,5 +1,9 @@
 # Release notes
 
+## 1.1.3 (2026-11-27)
+
+- **About** uses a wider, side-by-side layout so the artwork, information, keyboard shortcuts and update buttons fit without scrolling in normal-sized windows. Release notes also use the wider dialog.
+
 ## 1.1.2 (2026-11-26)
 
 - **Search** now lists matching queues, topics and subscriptions even when the namespace's own name also matches (e.g. "baltic" in aimcbalticrs). Namespaces whose name matches are loaded automatically, so this works straight after starting.
