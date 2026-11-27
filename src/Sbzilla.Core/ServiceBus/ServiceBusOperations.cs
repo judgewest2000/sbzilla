@@ -340,6 +340,118 @@ public static class ServiceBusOperations
         return result;
     }
 
+    /// <summary>
+    /// Peeks the newest <paramref name="max"/> messages (those below <paramref name="beforeSequenceNumber"/> when given), in ascending
+    /// sequence order. Service Bus can only peek forwards, so this locates the end of the queue by searching on sequence number and then
+    /// reads backwards in windows. For a session-enabled entity's active queue without a session ID, every available session is searched.
+    /// </summary>
+    public static async Task<List<ServiceBusReceivedMessage>> PeekLatestAsync(NamespaceConnection c, EntityRef entity, MessageSource source,
+        int max, long? beforeSequenceNumber, bool requiresSession, string? sessionId, CancellationToken ct)
+    {
+        var client = ServiceBusClients.Client(c);
+        if (!UsesSessions(requiresSession, source))
+        {
+            await using var receiver = CreateReceiver(client, entity, ReceiverOptions(source, ServiceBusReceiveMode.PeekLock));
+            return await PeekLatestFromAsync(receiver, max, beforeSequenceNumber, ct);
+        }
+
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            await using var session = await AcceptSessionAsync(client, entity, sessionId.Trim(), ServiceBusReceiveMode.PeekLock, ct);
+            return await PeekLatestFromAsync(session, max, beforeSequenceNumber, ct);
+        }
+
+        // The newest messages could be in any session, so all of them (up to 100) have to be searched.
+        var sessions = new List<ServiceBusSessionReceiver>();
+        var result = new List<ServiceBusReceivedMessage>();
+        try
+        {
+            while (sessions.Count < 100 && await AcceptNextSessionAsync(client, entity, ServiceBusReceiveMode.PeekLock, ct) is { } session)
+            {
+                sessions.Add(session);
+                result.AddRange(await PeekLatestFromAsync(session, max, beforeSequenceNumber, ct));
+            }
+        }
+        finally
+        {
+            foreach (var s in sessions) await s.DisposeAsync();
+        }
+        return result.OrderBy(m => m.SequenceNumber).TakeLast(max).ToList();
+    }
+
+    private static async Task<List<ServiceBusReceivedMessage>> PeekLatestFromAsync(ServiceBusReceiver receiver, int max, long? beforeSequenceNumber, CancellationToken ct)
+    {
+        var first = await PeekOneAsync(receiver, null, ct);
+        if (first == null) return [];
+        var low = first.SequenceNumber;
+        var end = beforeSequenceNumber ?? await FindEndAsync(receiver, low, max, ct);
+
+        // Read windows [from, start) backwards until there are enough; sequence numbers have gaps, so size each window by the density seen so far.
+        var result = new List<ServiceBusReceivedMessage>();
+        var start = end;
+        var width = (long)Math.Max(1, max);
+        while (result.Count < max && start > low)
+        {
+            var from = start - low > width ? start - width : low;
+            var window = await PeekRangeAsync(receiver, from, start, ct);
+            result.InsertRange(0, window);
+            var length = start - from;
+            start = from;
+            var needed = max - result.Count;
+            width = window.Count == 0
+                ? Math.Min(length, long.MaxValue / 4) * 2
+                : Math.Max(1, (long)Math.Ceiling(needed * (double)length / window.Count * 1.25));
+        }
+        return result.TakeLast(max).ToList();
+    }
+
+    /// <summary>Returns one past the highest sequence number in the receiver, given a known message at <paramref name="low"/>.</summary>
+    private static async Task<long> FindEndAsync(ServiceBusReceiver receiver, long low, int step, CancellationToken ct)
+    {
+        // Gallop forwards to find a sequence number with nothing at or after it...
+        var last = low;
+        var jump = (long)Math.Max(1, step);
+        long high;
+        while (true)
+        {
+            if (jump > long.MaxValue - last) { high = long.MaxValue; break; }
+            var probe = await PeekOneAsync(receiver, last + jump, ct);
+            if (probe == null) { high = last + jump; break; }
+            last = probe.SequenceNumber;
+            jump = Math.Min(jump, long.MaxValue / 4) * 2;
+        }
+
+        // ...then binary search between the last message found and that point.
+        while (high - last > 1)
+        {
+            var mid = last + (high - last) / 2;
+            var probe = await PeekOneAsync(receiver, mid, ct);
+            if (probe == null) high = mid;
+            else last = probe.SequenceNumber;
+        }
+        return last + 1;
+    }
+
+    private static async Task<ServiceBusReceivedMessage?> PeekOneAsync(ServiceBusReceiver receiver, long? fromSequenceNumber, CancellationToken ct) =>
+        (await receiver.PeekMessagesAsync(1, fromSequenceNumber, ct)).FirstOrDefault();
+
+    /// <summary>Peeks every message with a sequence number in [<paramref name="from"/>, <paramref name="to"/>).</summary>
+    private static async Task<List<ServiceBusReceivedMessage>> PeekRangeAsync(ServiceBusReceiver receiver, long from, long to, CancellationToken ct)
+    {
+        var result = new List<ServiceBusReceivedMessage>();
+        var next = from;
+        while (next < to)
+        {
+            var batch = await receiver.PeekMessagesAsync(250, next, ct);
+            if (batch.Count == 0) break;
+            var inRange = batch.Where(m => m.SequenceNumber < to).ToList();
+            result.AddRange(inRange);
+            if (inRange.Count < batch.Count) break;
+            next = batch[^1].SequenceNumber + 1;
+        }
+        return result;
+    }
+
     /// <summary>Deletes every message in the queue (or dead-letter queue). Returns how many were removed.</summary>
     public static async Task<int> PurgeAsync(NamespaceConnection c, EntityRef entity, MessageSource source, bool requiresSession,
         IProgress<int>? progress, CancellationToken ct)

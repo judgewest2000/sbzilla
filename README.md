@@ -44,6 +44,7 @@ Use Windows Settings > Apps, or run the one-liner above with `-Uninstall`.
 - **Peek messages**:
   - Peek from the active, dead-letter or transfer dead-letter queue. Messages are not locked or removed.
   - Peek a page at a time, with **Next** to continue.
+  - **Latest** peeks the most recent messages, newest first; **Next** then continues with older ones.
   - Session-enabled entities can be peeked across all sessions or one session.
   - **Filter** the peeked messages by any text in the body or properties.
   - The detail pane shows the body and all system and application properties. JSON and XML bodies are pretty-printed and syntax-highlighted; binary bodies are shown as a hex dump. Ctrl+F in the body opens a find bar.

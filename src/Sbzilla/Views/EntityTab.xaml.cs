@@ -80,6 +80,7 @@ public sealed partial class EntityTab : UserControl
     private PropertyForm? _form;
     private object? _properties;
     private bool _activated;
+    private bool _peekLatest;
     private bool _propertiesLoaded;
     private bool _rulesLoaded;
     private bool _updatingSources;
@@ -230,7 +231,7 @@ public sealed partial class EntityTab : UserControl
         var idle = !Busy;
         var writable = idle && !ReadOnly;
         SendButton.IsEnabled = writable;
-        PeekButton.IsEnabled = PeekCountBox.IsEnabled = SourceBox.IsEnabled = idle;
+        PeekButton.IsEnabled = PeekLatestButton.IsEnabled = PeekCountBox.IsEnabled = SourceBox.IsEnabled = idle;
         PeekNextButton.IsEnabled = idle && _peeked.Count > 0;
         ResubmitButton.IsEnabled = writable && selected > 0;
         ResendButton.IsEnabled = writable && selected == 1;
@@ -320,11 +321,23 @@ public sealed partial class EntityTab : UserControl
     private async Task<string> PeekCoreAsync(bool append, CancellationToken ct)
     {
         var max = double.IsNaN(PeekCountBox.Value) ? 100 : (int)PeekCountBox.Value;
-        long? from = append && _peeked.Count > 0 ? _peeked.Max(r => r.Message.SequenceNumber) + 1 : null;
+        var latest = _peekLatest;
         var session = SessionPeek && SessionBox.Text.Trim().Length > 0 ? SessionBox.Text.Trim() : null;
         var source = Source;
         var requiresSession = RequiresSession;
-        var messages = await Task.Run(() => ServiceBusOperations.PeekAsync(Namespace, Entity, source, max, from, requiresSession, session, ct), ct);
+        List<ServiceBusReceivedMessage> messages;
+        if (latest)
+        {
+            // Newest first; "Next" continues with the batch just older than the oldest shown.
+            long? before = append && _peeked.Count > 0 ? _peeked.Min(r => r.Message.SequenceNumber) : null;
+            messages = await Task.Run(() => ServiceBusOperations.PeekLatestAsync(Namespace, Entity, source, max, before, requiresSession, session, ct), ct);
+            messages.Reverse();
+        }
+        else
+        {
+            long? from = append && _peeked.Count > 0 ? _peeked.Max(r => r.Message.SequenceNumber) + 1 : null;
+            messages = await Task.Run(() => ServiceBusOperations.PeekAsync(Namespace, Entity, source, max, from, requiresSession, session, ct), ct);
+        }
 
         if (!append) _peeked.Clear();
         var known = _peeked.Select(r => (r.Message.SequenceNumber, (string?)r.Message.SessionId)).ToHashSet();
@@ -333,14 +346,32 @@ public sealed partial class EntityTab : UserControl
         ApplyFilter();
         if (_peeked.Count == 0)
             ListHint.Text = $"No messages in {EntityRef.SourceLabel(source).ToLowerInvariant()}" + (session != null ? $" for session “{session}”." : ".");
+        var plural = messages.Count == 1 ? "" : "s";
         return append
-            ? $"Peeked {added.Count:N0} more message{(added.Count == 1 ? "" : "s")}"
-            : $"Peeked {messages.Count:N0} message{(messages.Count == 1 ? "" : "s")} from {EntityRef.SourceLabel(source).ToLowerInvariant()} at {DateTime.Now:HH:mm:ss}";
+            ? $"Peeked {added.Count:N0} {(latest ? "older" : "more")} message{(added.Count == 1 ? "" : "s")}"
+            : $"Peeked {(latest ? "the latest " : "")}{messages.Count:N0} message{plural} from {EntityRef.SourceLabel(source).ToLowerInvariant()} at {DateTime.Now:HH:mm:ss}";
+    }
+
+    private void SetPeekLatest(bool latest)
+    {
+        _peekLatest = latest;
+        ToolTipService.SetToolTip(PeekNextButton, latest
+            ? "Peek the next older batch before the oldest message shown, and add it to the list"
+            : "Peek the next batch after the last message shown, and add it to the list");
     }
 
     private async void Peek_Click(object sender, RoutedEventArgs e) =>
         await RunAsync("Peeking…", async ct =>
         {
+            SetPeekLatest(false);
+            await RefreshInfoAsync(ct);
+            return await PeekCoreAsync(append: false, ct);
+        });
+
+    private async void PeekLatest_Click(object sender, RoutedEventArgs e) =>
+        await RunAsync("Peeking latest…", async ct =>
+        {
+            SetPeekLatest(true);
             await RefreshInfoAsync(ct);
             return await PeekCoreAsync(append: false, ct);
         });
